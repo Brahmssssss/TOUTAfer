@@ -1,23 +1,32 @@
 name: Sauvegarde Automatique TOUTA FER
 
 on:
+  # Déclenchement automatique tous les soirs à 20h (Algérie)
   schedule:
-    - cron: '0 19 * * *' # 19h UTC = 20h en Algérie
+    - cron: '0 19 * * *' 
+  
+  # Déclenchement manuel pour tester (Apparaît dans l'onglet Actions)
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Récupérer le code
-        uses: actions/checkout@v2
+      - name: Récupérer le code de TOUTA FER
+        uses: actions/checkout@v3
 
-      - name: Installer Python
-        uses: actions/setup-python@v2
+      - name: Installer Python sur le serveur
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      - name: Envoyer l'email
+      - name: Installer les outils (Pandas)
+        run: |
+          pip install pandas
+
+      - name: Exécuter l'envoi de l'email de sauvegarde
         env:
+          # On donne la clé secrète au robot
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         run: |
           python backup_mail.py
