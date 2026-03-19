@@ -1,0 +1,23 @@
+name: Sauvegarde Automatique TOUTA FER
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # 19h UTC = 20h en Algérie
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v2
+
+      - name: Installer Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Envoyer l'email
+        env:
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        run: |
+          python backup_mail.py
