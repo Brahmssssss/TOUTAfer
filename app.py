@@ -15,16 +15,59 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # --- 1. CONFIGURATION DE LA PAGE ---
-st.set_page_config(page_title="TOUTA FER - Sécurisé", page_icon="🏗️", layout="wide")
+st.set_page_config(page_title="TOUTA FER - Gestion", page_icon="🏗️", layout="wide")
 
-# --- 2. CONNEXIONS SÉCURISÉES ---
+# --- 2. CATALOGUE OFFICIEL EXTRAIT DE TA FEUILLE PDF (37 ARTICLES) ---
+# Format : (Référence, Désignation, UM, FDX_Initial, FDX_Entrée_PDF, FDX_Sortie_PDF, FDX_Final)
+STOCK_INITIAL_PDF = [
+    ("T.166", "FIL BOTLAGE", "KG", 1276.000, 0.000, 0.000, 1276.000),
+    ("T.164", "FIL D'ATTACHE 10KG", "KG", 1147.000, 0.000, 0.000, 1147.000),
+    ("T.162", "FIL MACHINE 06 M/M TRF", "T", 37.500, 0.000, 0.000, 37.500),
+    ("TS.133", "FIL MACHINE 06 M/M TRF 1006", "T", 89.000, 0.000, 0.000, 89.000),
+    ("TS.158", "FIL MACHINE 08 M/M TRF", "T", 9.000, 0.000, 0.000, 9.000),
+    ("B.10", "FIL MACHINE 09 M/M", "T", 24.000, 0.000, 0.000, 24.000),
+    ("B.14", "FIL MACHINE 09 M/M production", "T", 3.000, 0.000, 0.000, 3.000),
+    ("B.11", "FIL MACHINE 10 M/M TRF", "T", 10.000, 0.000, 0.000, 10.000),
+    ("T.163", "FIL MACHINE5.5 M/M", "T", 7.000, 0.000, 0.000, 7.000),
+    ("TS.76", "FIL MACHINE5.5 M/M TRS", "T", 2.000, 0.000, 0.000, 2.000),
+    ("B.9", "M.CHEVRON 4M", "P", 0.000, 0.000, 0.000, 0.000),
+    ("TS.248", "M.DEMI MADRI 4*(40*90) HJ", "P", 2.000, 0.000, 0.000, 2.000),
+    ("TS.229", "MADRI 18*40 3.5 M", "P", 5.000, 0.000, 0.000, 5.000),
+    ("B.7", "MADRI 3M 20", "P", 8.000, 0.000, 0.000, 8.000),
+    ("TS.250", "MADRI 4*(40*135) HJ", "P", 3.000, 0.000, 0.000, 3.000),
+    ("B.8", "MADRI 4M 18*40", "P", 18.000, 0.000, 0.000, 18.000),
+    ("TS.246", "MADRI 4M 18*40 HJ", "P", 15.000, 0.000, 0.000, 15.000),
+    ("TS.240", "MULTIPILIER 18 ARSER-PLEX", "P", 6.000, 0.000, 0.000, 6.000),
+    ("TS.136", "MULTIPLIER 15 ARSER-PLEX", "P", 21.000, 0.000, 0.000, 21.000),
+    ("TS.238", "MULTIPLIER 18 FORM", "P", 26.000, 0.000, 0.000, 26.000),
+    ("TS.247", "PLANCHE 4(21*115) HJ", "P", 6.000, 0.000, 0.000, 6.000),
+    ("TS.249", "PLANCHE 4*(21*180) HJ", "P", 4.000, 0.000, 0.000, 4.000),
+    ("TS.84", "POINT 08", "P", 52.000, 0.000, 0.000, 52.000),
+    ("TS.21", "POINTE 05", "P", 397.000, 0.000, 0.000, 397.000),
+    ("T.167", "POINTE 06", "P", 382.000, 0.000, 0.000, 382.000),
+    ("T.168", "POINTE 07", "P", 196.000, 0.000, 0.000, 196.000),
+    ("T.169", "POINTE 10", "P", 169.000, 0.000, 0.000, 169.000),
+    ("T.155", "ROND A BETON D08 M/M T", "T", 157.000, 0.000, 2.000, 155.000),
+    ("T.156", "ROND A BETON D10 M/M T", "T", 3.000, 0.000, 0.000, 3.000),
+    ("T.157", "ROND A BETON D12 M/M T", "T", 85.000, 0.000, 5.000, 80.000),
+    ("T.158", "ROND A BETON D14 M/M T", "T", 1.000, 0.000, 0.000, 1.000),
+    ("T.159", "ROND A BETON D16 M/M T", "T", 108.000, 0.000, 4.000, 104.000),
+    ("T.160", "ROND A BETON D20 M/M T", "T", 133.000, 0.000, 0.000, 133.000),
+    ("T.161", "ROND A BETON D25 M/M T", "T", 183.000, 0.000, 0.000, 183.000),
+    ("T.203", "ROND A BETON D32 M/M T", "T", 92.000, 0.000, 0.000, 92.000),
+    ("TS.261", "TREILLIS SOUDES LONG 40M*02M D4", "RLX", 47.000, 93.000, 0.000, 140.000),
+    ("TS.263", "TRIELLE A SOUDE D3.3MM 15*17CM 2*40M", "RLX", 152.000, 0.000, 0.000, 152.000)
+]
+
+DICT_PDF = {f"{ref} | {des} | {um}": (init_v, ent_v, sort_v, fin_v) for ref, des, um, init_v, ent_v, sort_v, fin_v in STOCK_INITIAL_PDF}
+
+# --- 3. CONNEXIONS SÉCURISÉES ---
 @st.cache_resource
 def init_db():
     try:
         s_url = st.secrets["supabase"]["url"].strip().rstrip('/')
         s_key = st.secrets["supabase"]["key"].strip()
         sb = create_client(s_url, s_key)
-        
         sb.table("stock").select("count", count="exact").execute()
         
         fb = None
@@ -40,9 +83,64 @@ def init_db():
 
 sb, fb, db_status = init_db()
 
-# --- 3. LOGIQUE DE SÉCURITÉ & OUTILS ---
+def synchroniser_stock_pdf(forcer=False):
+    if not sb: return
+    try:
+        res = sb.table("stock").select("*").execute()
+        existants = [r['diametre'] for r in res.data] if res.data else []
+        
+        if forcer or not any("T.155 | ROND A BETON" in x for x in existants):
+            for old in ['6mm','8mm','10mm','12mm','14mm','16mm','18mm','20mm','22mm','25mm','32mm','40mm']:
+                if old in existants:
+                    sb.table("stock").delete().eq("diametre", old).execute()
+            
+            for ref, des, um, init_v, ent_v, sort_v, fin_v in STOCK_INITIAL_PDF:
+                cle_article = f"{ref} | {des} | {um}"
+                if forcer or cle_article not in existants:
+                    sb.table("stock").upsert({"diametre": cle_article, "quantite": fin_v}).execute()
+    except Exception:
+        pass
+
+synchroniser_stock_pdf(forcer=False)
+
+def formater_dataframe_stock(raw_data):
+    ordres_ref = [x[0] for x in STOCK_INITIAL_PDF]
+    lignes = []
+    for r in raw_data:
+        cle = str(r.get('diametre', ''))
+        qte_finale = float(r.get('quantite', 0.0))
+        if "|" in cle:
+            parts = [p.strip() for p in cle.split("|")]
+            ref = parts[0] if len(parts) > 0 else ""
+            des = parts[1] if len(parts) > 1 else cle
+            um = parts[2] if len(parts) > 2 else "T"
+        else:
+            ref, des, um = "-", cle, "T"
+            
+        init_v, ent_pdf, sort_pdf, fin_pdf = DICT_PDF.get(cle, (qte_finale, 0.0, 0.0, qte_finale))
+        diff = qte_finale - fin_pdf
+        ent_tot = ent_pdf + (diff if diff > 0 else 0.0)
+        sort_tot = sort_pdf + (abs(diff) if diff < 0 else 0.0)
+        rang = ordres_ref.index(ref) if ref in ordres_ref else 999
+        
+        lignes.append({
+            "Rang": rang,
+            "Clé_Interne": cle,
+            "Référence": ref,
+            "Désignation": des,
+            "UM": um,
+            "FDX Initial": init_v,
+            "FDX Entrée": ent_tot,
+            "FDX Sortie": sort_tot,
+            "FDX Final": qte_finale
+        })
+    df_res = pd.DataFrame(lignes)
+    if not df_res.empty:
+        df_res = df_res.sort_values("Rang").drop(columns=["Rang"])
+    return df_res
+
+# --- 4. LOGIQUE DE SÉCURITÉ & OUTILS ---
 SALT = "TOUTA_FER_DZ_2024_SECURE_TOKEN"
-DIAMETRES_STANDARDS = ["6mm","8mm","10mm","12mm","14mm","16mm","18mm","20mm","22mm","25mm","32mm","40mm"]
 
 def hash_pwd(password):
     salted_pass = password + SALT
@@ -65,7 +163,6 @@ def log_action(user_nom, action):
     except: pass
 
 def extraire_tableau_receptions(logs_data):
-    """Transforme l'historique des réceptions en un tableau détaillé avec les prix."""
     receptions = []
     for row in logs_data:
         act = str(row.get("action", ""))
@@ -76,9 +173,9 @@ def extraire_tableau_receptions(logs_data):
                     "Date": row.get("date"),
                     "Fournisseur / Usine": parts[1],
                     "N° BL / Camion": parts[2],
-                    "Diamètre": parts[3],
-                    "Quantité (T)": float(parts[4]),
-                    "Prix d'Achat / T (Centimes)": parts[5],
+                    "Article": parts[3],
+                    "Quantité": float(parts[4]),
+                    "Prix d'Achat Unitaire (Centimes)": parts[5],
                     "Coût Total (Centimes)": parts[6],
                     "Réceptionné par": row.get("utilisateur")
                 })
@@ -86,7 +183,8 @@ def extraire_tableau_receptions(logs_data):
 
 def envoyer_sauvegarde_mail(user_nom):
     try:
-        s = pd.DataFrame(sb.table("stock").select("*").execute().data)
+        raw_s = sb.table("stock").select("*").execute().data
+        s = formater_dataframe_stock(raw_s).drop(columns=["Clé_Interne"], errors="ignore")
         v = pd.DataFrame(sb.table("ventes").select("*").execute().data)
         l_raw = sb.table("logs").select("*").order("id", desc=True).execute().data
         l = pd.DataFrame(l_raw)
@@ -94,7 +192,7 @@ def envoyer_sauvegarde_mail(user_nom):
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            s.to_excel(writer, sheet_name='Stocks', index=False)
+            s.to_excel(writer, sheet_name='Etat_du_Stock', index=False)
             df_rec.to_excel(writer, sheet_name='Achats_Receptions', index=False)
             v.to_excel(writer, sheet_name='Ventes_Credits', index=False)
             l.to_excel(writer, sheet_name='Historique_Audit', index=False)
@@ -103,7 +201,7 @@ def envoyer_sauvegarde_mail(user_nom):
         msg['Subject'] = f"🛡️ TOUTA FER - BACKUP - {datetime.now().strftime('%d/%m/%Y')}"
         msg['From'] = st.secrets["gmail"]["email_envoi"]
         msg['To'] = st.secrets["gmail"]["email_dest"]
-        msg.attach(MIMEText(f"Sauvegarde complète (Stocks, Achats/Réceptions, Ventes, Crédits) demandée par {user_nom}."))
+        msg.attach(MIMEText(f"Sauvegarde complète (Etat du stock, Achats/Réceptions, Ventes, Crédits) demandée par {user_nom}."))
 
         part = MIMEBase("application", "octet-stream")
         part.set_payload(output.getvalue())
@@ -119,15 +217,14 @@ def envoyer_sauvegarde_mail(user_nom):
         return True
     except Exception as e: return str(e)
 
-# --- 4. GESTION DE LA SESSION ---
+# --- 5. GESTION DE LA SESSION & CONNEXION ---
 if 'auth' not in st.session_state:
     st.session_state.auth = False
 
-# --- 5. ÉCRAN DE CONNEXION ---
 if not st.session_state.auth:
     st.markdown(f"<p style='text-align:center; color:grey;'>{db_status}</p>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🏗️ TOUTA FER</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Identifiez-vous pour accéder à la gestion du fer.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Identifiez-vous pour accéder à la gestion du stock et des ventes.</p>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
@@ -171,7 +268,6 @@ else:
                 if res_m == True: st.sidebar.success("✅ Mail envoyé avec succès !")
                 else: st.sidebar.error(f"❌ Erreur mail : {res_m}")
 
-    # Définition du menu selon les rôles
     menu = ["📦 État des Stocks", "🛒 Nouvelle Vente", "💳 Suivi des Crédits"]
     if user['role'] in ["Développeur", "Grand Patron", "Patron", "Gérant"]:
         menu.insert(1, "🚚 Réception Fer")
@@ -180,32 +276,55 @@ else:
     
     choice = st.sidebar.radio("Navigation", menu)
 
-    # --- STOCK (TONNES) ---
+    # --- STOCK (FORMAT PDF OFFICIEL) ---
     if choice == "📦 État des Stocks":
-        st.header("📦 État des Stocks (en Tonnes)")
+        st.header("📦 État du Stock (Catalogue Complet)")
         try:
             res_s = sb.table("stock").select("*").execute()
-            df_s = pd.DataFrame(res_s.data)
+            df_s = formater_dataframe_stock(res_s.data if res_s.data else [])
+            
             if not df_s.empty:
-                st.dataframe(df_s.sort_values('diametre'), use_container_width=True)
+                search_q = st.text_input("🔍 Rechercher une référence ou désignation (ex: ROND A BETON, T.155, POINTE...)").strip().upper()
+                df_aff = df_s.drop(columns=["Clé_Interne"])
+                if search_q:
+                    df_aff = df_aff[df_aff["Référence"].str.upper().str.contains(search_q) | df_aff["Désignation"].str.upper().str.contains(search_q)]
+                
+                st.dataframe(df_aff, use_container_width=True, hide_index=True)
+                
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Total FDX Initial", f"{df_aff['FDX Initial'].sum():,.2f}")
+                c2.metric("Total FDX Entrée", f"{df_aff['FDX Entrée'].sum():,.2f}")
+                c3.metric("Total FDX Sortie", f"{df_aff['FDX Sortie'].sum():,.2f}")
+                c4.metric("Total FDX Final", f"{df_aff['FDX Final'].sum():,.2f}")
             else:
-                st.info("Aucun stock initialisé.")
-        except: st.error("Impossible de lire les stocks.")
+                st.info("Chargement du stock initial...")
 
-    # --- ONGLET : RÉCEPTION DE FER (AVEC PRIX D'ACHAT DÉTAILLÉ) ---
+            if user['role'] in ["Développeur", "Grand Patron", "Patron"]:
+                with st.expander("⚙️ Options avancées du Stock"):
+                    if st.button("🔄 Réinitialiser avec les valeurs exactes de la feuille PDF (28/10/2026)"):
+                        synchroniser_stock_pdf(forcer=True)
+                        log_action(user['nom'], "STOCK : Réinitialisation aux valeurs du PDF")
+                        st.success("Stock synchronisé avec la feuille PDF !")
+                        st.rerun()
+        except Exception as e:
+            st.error(f"Impossible de lire les stocks : {e}")
+
+    # --- ONGLET : RÉCEPTION DE FER & ARTICLES ---
     elif choice == "🚚 Réception Fer":
-        st.header("🚚 Réception de Fer & Suivi des Prix d'Achat")
+        st.header("🚚 Réception de Marchandise & Suivi des Prix d'Achat")
         try:
             res_s = sb.table("stock").select("*").execute()
-            df_s = pd.DataFrame(res_s.data)
+            df_s = formater_dataframe_stock(res_s.data if res_s.data else [])
+            liste_articles = df_s["Clé_Interne"].tolist() if not df_s.empty else []
             
             col1, col2 = st.columns(2)
             fournisseur = col1.text_input("Usine / Fournisseur (ex: Tosyali, Bellara)").strip().replace("|", "-")
             bon_livraison = col1.text_input("N° Bon de Livraison / Camion").strip().replace("|", "-")
-            diam_recu = col2.selectbox("Diamètre du Fer reçu", DIAMETRES_STANDARDS)
-            qte_recue = col2.number_input("Quantité reçue (en Tonnes)", min_value=0.001, format="%.3f")
             
-            prix_achat = st.number_input("Prix d'Achat par Tonne (en Centimes)", min_value=0.0, step=1000.0)
+            article_choisi = col2.selectbox("Article reçu (Référence | Désignation | UM)", liste_articles)
+            qte_recue = col2.number_input("Quantité reçue (FDX Entrée)", min_value=0.001, format="%.3f")
+            
+            prix_achat = st.number_input("Prix d'Achat Unitaire (en Centimes)", min_value=0.0, step=1000.0)
             total_achat = qte_recue * prix_achat
             
             st.subheader(f"💰 Coût Total de l'arrivage : {total_achat:,.0f} Centimes")
@@ -216,43 +335,36 @@ else:
                 elif prix_achat <= 0:
                     st.error("Veuillez indiquer le prix d'achat pour suivre vos coûts.")
                 else:
-                    # Vérifie si le diamètre existe déjà dans la table stock
-                    if not df_s.empty and diam_recu in df_s['diametre'].values:
-                        old_q = float(df_s.loc[df_s['diametre']==diam_recu, 'quantite'].values[0])
-                        new_q = old_q + qte_recue
-                        sb.table("stock").update({"quantite": new_q}).eq("diametre", diam_recu).execute()
-                    else:
-                        new_q = qte_recue
-                        sb.table("stock").insert({"diametre": diam_recu, "quantite": new_q}).execute()
+                    old_q = float(df_s.loc[df_s['Clé_Interne']==article_choisi, 'FDX Final'].values[0])
+                    new_q = old_q + qte_recue
+                    sb.table("stock").update({"quantite": new_q}).eq("diametre", article_choisi).execute()
                     
-                    # Formatage structuré pour reconstruire le tableau détaillé des prix
-                    details_rec = f"RÉCEPTION | {fournisseur} | {bon_livraison} | {diam_recu} | {qte_recue:.3f} | {prix_achat:,.0f} | {total_achat:,.0f}"
+                    nom_court = article_choisi.replace(" | ", " - ")
+                    details_rec = f"RÉCEPTION | {fournisseur} | {bon_livraison} | {nom_court} | {qte_recue:.3f} | {prix_achat:,.0f} | {total_achat:,.0f}"
                     log_action(user['nom'], details_rec)
                     
                     if fb:
                         fb.collection("receptions_backup").add({
                             "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
                             "fournisseur": fournisseur, "bon": bon_livraison,
-                            "fer": diam_recu, "tonnes": qte_recue,
+                            "article": nom_court, "quantite": qte_recue,
                             "prix_unitaire_centimes": prix_achat, "cout_total_centimes": total_achat,
                             "par": user['nom']
                         })
-                    st.success(f"✅ Réception enregistrée ! Stock de {diam_recu} : {new_q:.3f} T (Acheté à {prix_achat:,.0f} Centimes/T).")
+                    st.success(f"✅ Réception enregistrée ! Nouveau stock : {new_q:,.3f}")
                     st.balloons()
             
             st.divider()
             st.subheader("📊 Historique détaillé des Achats et Fluctuation des Prix")
-            
             res_l = sb.table("logs").select("*").order("id", desc=True).execute()
             df_receptions = extraire_tableau_receptions(res_l.data if res_l.data else [])
             
             if not df_receptions.empty:
-                # Filtre pour comparer l'évolution du prix d'un fer précis (ex: 12mm hier vs aujourd'hui)
-                filtre_diam = st.selectbox("🔍 Filtrer par diamètre pour comparer les prix d'achat :", ["Tous les diamètres"] + DIAMETRES_STANDARDS)
-                if filtre_diam != "Tous les diamètres":
-                    df_receptions = df_receptions[df_receptions["Diamètre"] == filtre_diam]
-                
-                st.dataframe(df_receptions, use_container_width=True)
+                articles_dispo = ["Tous les articles"] + sorted(df_receptions["Article"].unique().tolist())
+                filtre_art = st.selectbox("🔍 Filtrer par article pour comparer les prix d'achat :", articles_dispo)
+                if filtre_art != "Tous les articles":
+                    df_receptions = df_receptions[df_receptions["Article"] == filtre_art]
+                st.dataframe(df_receptions, use_container_width=True, hide_index=True)
             else:
                 st.info("Aucune réception détaillée enregistrée pour le moment.")
         except Exception as e:
@@ -260,13 +372,21 @@ else:
 
     # --- VENTES (CENTIMES + CONTACT) ---
     elif choice == "🛒 Nouvelle Vente":
-        st.header("🛒 Nouvelle Vente (en Centimes)")
+        st.header("🛒 Nouvelle Vente (FDX Sortie)")
+        res_s = sb.table("stock").select("*").execute()
+        df_s = formater_dataframe_stock(res_s.data if res_s.data else [])
+        liste_articles = df_s["Clé_Interne"].tolist() if not df_s.empty else []
+
         col1, col2 = st.columns(2)
         cl = col1.text_input("Nom du Client").strip()
         tel = col1.text_input("Contact Client (Tél/Email)").strip()
-        f = col2.selectbox("Fer à béton", DIAMETRES_STANDARDS)
-        q_v = col2.number_input("Quantité (Tonnes)", min_value=0.001, format="%.3f")
-        px = col1.number_input("Prix de Vente / Tonne (Centimes)", min_value=0.0)
+        f = col2.selectbox("Article vendu (Réf | Désignation | UM)", liste_articles)
+        
+        stock_dispo = float(df_s.loc[df_s['Clé_Interne']==f, 'FDX Final'].values[0]) if not df_s.empty and f else 0.0
+        col2.caption(f"Stock disponible : **{stock_dispo:,.3f}**")
+        
+        q_v = col2.number_input("Quantité vendue (FDX Sortie)", min_value=0.001, format="%.3f")
+        px = col1.number_input("Prix de Vente Unitaire (Centimes)", min_value=0.0)
         
         total = q_v * px
         st.subheader(f"Total à payer : {total:,.0f} Centimes")
@@ -283,17 +403,15 @@ else:
             if not cl: st.error("Le nom du client est obligatoire.")
             else:
                 try:
-                    res_st = sb.table("stock").select("quantite").eq("diametre", f).execute()
-                    q_act = float(res_st.data[0]['quantite']) if res_st.data else 0.0
-                    if q_act >= q_v:
+                    if stock_dispo >= q_v:
                         dv = {"date":str(date.today()), "client":cl, "contact":tel, "fer":f, "qte":q_v, "total":total, "paye":avance, "reste":total-avance, "echeance":date_e, "vendeur":user['nom']}
                         sb.table("ventes").insert(dv).execute()
-                        sb.table("stock").update({"quantite": q_act - q_v}).eq("diametre", f).execute()
+                        sb.table("stock").update({"quantite": stock_dispo - q_v}).eq("diametre", f).execute()
                         if fb: fb.collection("ventes_backup").add(dv)
-                        log_action(user['nom'], f"VENTE : {q_v}T de {f} à {cl} (Prix/T: {px:,.0f} | Reste: {total-avance:,.0f})")
-                        st.success("Vente enregistrée sur les serveurs sécurisés !")
+                        log_action(user['nom'], f"VENTE : {q_v} de [{f}] à {cl} (Prix/U: {px:,.0f} | Reste: {total-avance:,.0f})")
+                        st.success("Vente enregistrée et déduite du stock !")
                         st.balloons()
-                    else: st.error(f"Stock insuffisant ({q_act:.3f} T disponible).")
+                    else: st.error(f"Stock insuffisant ({stock_dispo:,.3f} disponible).")
                 except: st.error("Erreur lors de la synchronisation.")
 
     # --- CRÉDITS ---
