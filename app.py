@@ -18,7 +18,6 @@ from firebase_admin import credentials, firestore
 st.set_page_config(page_title="TOUTA FER - Gestion", page_icon="🏗️", layout="wide")
 
 # --- 2. CATALOGUE OFFICIEL EXTRAIT DE TA FEUILLE PDF (37 ARTICLES) ---
-# Format : (Référence, Désignation, UM, FDX_Initial, FDX_Entrée_PDF, FDX_Sortie_PDF, FDX_Final)
 STOCK_INITIAL_PDF = [
     ("T.166", "FIL BOTLAGE", "KG", 1276.000, 0.000, 0.000, 1276.000),
     ("T.164", "FIL D'ATTACHE 10KG", "KG", 1147.000, 0.000, 0.000, 1147.000),
@@ -139,7 +138,7 @@ def formater_dataframe_stock(raw_data):
         df_res = df_res.sort_values("Rang").drop(columns=["Rang"])
     return df_res
 
-# --- 4. LOGIQUE DE SÉCURITÉ & OUTILS ---
+# --- 4. LOGIQUE DE SÉCURITÉ & EXTRACTION ---
 SALT = "TOUTA_FER_DZ_2024_SECURE_TOKEN"
 
 def hash_pwd(password):
@@ -181,6 +180,30 @@ def extraire_tableau_receptions(logs_data):
                 })
     return pd.DataFrame(receptions)
 
+def extraire_tableau_caisse(logs_data):
+    """Extrait tous les mouvements manuels de la Caisse (Entrées et Dépenses)."""
+    mouvements = []
+    for row in logs_data:
+        act = str(row.get("action", ""))
+        if act.startswith("CAISSE |"):
+            parts = [p.strip() for p in act.split("|")]
+            if len(parts) >= 6:
+                try:
+                    montant_val = float(parts[4].replace(",", "").replace(" ", ""))
+                except:
+                    montant_val = 0.0
+                mouvements.append({
+                    "Date": row.get("date"),
+                    "Sens": parts[1],
+                    "Catégorie": parts[2],
+                    "Mode": parts[3],
+                    "Montant_Num": montant_val,
+                    "Montant (Centimes)": f"{montant_val:,.0f}",
+                    "Motif / Bénéficiaire": parts[5],
+                    "Opérateur": row.get("utilisateur")
+                })
+    return pd.DataFrame(mouvements)
+
 def envoyer_sauvegarde_mail(user_nom):
     try:
         raw_s = sb.table("stock").select("*").execute().data
@@ -189,19 +212,21 @@ def envoyer_sauvegarde_mail(user_nom):
         l_raw = sb.table("logs").select("*").order("id", desc=True).execute().data
         l = pd.DataFrame(l_raw)
         df_rec = extraire_tableau_receptions(l_raw)
+        df_cai = extraire_tableau_caisse(l_raw).drop(columns=["Montant_Num"], errors="ignore")
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             s.to_excel(writer, sheet_name='Etat_du_Stock', index=False)
             df_rec.to_excel(writer, sheet_name='Achats_Receptions', index=False)
             v.to_excel(writer, sheet_name='Ventes_Credits', index=False)
+            df_cai.to_excel(writer, sheet_name='Journal_Caisse', index=False)
             l.to_excel(writer, sheet_name='Historique_Audit', index=False)
         
         msg = MIMEMultipart()
         msg['Subject'] = f"🛡️ TOUTA FER - BACKUP - {datetime.now().strftime('%d/%m/%Y')}"
         msg['From'] = st.secrets["gmail"]["email_envoi"]
         msg['To'] = st.secrets["gmail"]["email_dest"]
-        msg.attach(MIMEText(f"Sauvegarde complète (Etat du stock, Achats/Réceptions, Ventes, Crédits) demandée par {user_nom}."))
+        msg.attach(MIMEText(f"Sauvegarde complète (Stock, Réceptions, Ventes, Caisse, Audit) demandée par {user_nom}."))
 
         part = MIMEBase("application", "octet-stream")
         part.set_payload(output.getvalue())
@@ -224,7 +249,7 @@ if 'auth' not in st.session_state:
 if not st.session_state.auth:
     st.markdown(f"<p style='text-align:center; color:grey;'>{db_status}</p>", unsafe_allow_html=True)
     st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🏗️ TOUTA FER</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center;'>Identifiez-vous pour accéder à la gestion du stock et des ventes.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Identifiez-vous pour accéder à la gestion du stock et de la caisse.</p>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
@@ -271,6 +296,8 @@ else:
     menu = ["📦 État des Stocks", "🛒 Nouvelle Vente", "💳 Suivi des Crédits"]
     if user['role'] in ["Développeur", "Grand Patron", "Patron", "Gérant"]:
         menu.insert(1, "🚚 Réception Fer")
+    if user['role'] in ["Développeur", "Grand Patron", "Patron", "Gérant", "Comptable"]:
+        menu.append("💰 Caisse & Trésorerie")
     if user['role'] in ["Développeur", "Grand Patron", "Patron"]:
         menu += ["👥 Gestion Personnel", "📜 Historique Audit"]
     
@@ -433,6 +460,84 @@ else:
                     st.success("Crédit mis à jour !")
                     st.rerun()
         except: st.error("Erreur de chargement des crédits.")
+
+    # --- NOUVEL ONGLET : CAISSE & TRÉSORERIE ---
+    elif choice == "💰 Caisse & Trésorerie":
+        st.header("💰 Gestion de la Caisse & Trésorerie (en Centimes)")
+        try:
+            res_v = sb.table("ventes").select("*").execute()
+            df_v = pd.DataFrame(res_v.data) if res_v.data else pd.DataFrame()
+            
+            res_l = sb.table("logs").select("*").order("id", desc=True).execute()
+            df_caisse = extraire_tableau_caisse(res_l.data if res_l.data else [])
+            
+            # Calculs financiers automatiques
+            encaissements_ventes = float(df_v['paye'].sum()) if not df_v.empty and 'paye' in df_v else 0.0
+            credits_dehors = float(df_v['reste'].sum()) if not df_v.empty and 'reste' in df_v else 0.0
+            
+            entrees_manuelles = float(df_caisse[df_caisse['Sens'] == '🟢 Entrée']['Montant_Num'].sum()) if not df_caisse.empty else 0.0
+            sorties_depenses = float(df_caisse[df_caisse['Sens'] == '🔴 Sortie']['Montant_Num'].sum()) if not df_caisse.empty else 0.0
+            
+            solde_net_caisse = (encaissements_ventes + entrees_manuelles) - sorties_depenses
+            
+            # Affichage des compteurs professionnels
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("💵 Encaissé (Ventes & Crédits)", f"{encaissements_ventes:,.0f} Cts")
+            m2.metric("➕ Apports Caisse", f"{entrees_manuelles:,.0f} Cts")
+            m3.metric("🔴 Sorties & Dépenses", f"{sorties_depenses:,.0f} Cts")
+            m4.metric("🏦 SOLDE NET EN CAISSE", f"{solde_net_caisse:,.0f} Cts")
+            
+            st.info(f"⏳ **Total des Crédits Clients dehors (Reste à recouvrer) :** {credits_dehors:,.0f} Centimes")
+            st.divider()
+            
+            # Formulaire simple pour ajouter une opération de caisse
+            with st.expander("➕ Enregistrer une Opération de Caisse (Dépense, Paiement Fournisseur, Apport...)", expanded=True):
+                c1, c2, c3 = st.columns(3)
+                sens_op = c1.radio("Type de mouvement", ["🔴 Sortie", "🟢 Entrée"])
+                
+                if sens_op == "🔴 Sortie":
+                    cat_list = ["Paiement Fournisseur / Usine", "Transport / Camion", "Salaires / Avances Employés", "Gasoil / Entretien", "Frais Généraux (Factures, Repas...)", "Retrait Patron"]
+                else:
+                    cat_list = ["Apport en Caisse (Fond de caisse)", "Autre Entrée d'argent"]
+                    
+                cat_op = c2.selectbox("Catégorie", cat_list)
+                mode_op = c3.selectbox("Mode de règlement", ["Espèces (Cash)", "Chèque", "Virement Bancaire"])
+                
+                c4, c5 = st.columns([1, 2])
+                montant_op = c4.number_input("Montant (en Centimes)", min_value=0.0, step=1000.0)
+                motif_op = c5.text_input("Détail / Bénéficiaire (ex: Chauffeur Ahmed, Usine Tosyali...)").strip().replace("|", "-")
+                
+                if st.button("💾 VALIDER L'OPÉRATION DE CAISSE", use_container_width=True):
+                    if montant_op <= 0:
+                        st.error("Veuillez saisir un montant supérieur à 0.")
+                    elif not motif_op:
+                        st.error("Veuillez préciser le détail ou le bénéficiaire.")
+                    else:
+                        log_txt = f"CAISSE | {sens_op} | {cat_op} | {mode_op} | {montant_op:.0f} | {motif_op}"
+                        log_action(user['nom'], log_txt)
+                        if fb:
+                            fb.collection("caisse_backup").add({
+                                "date": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                "sens": sens_op, "categorie": cat_op, "mode": mode_op,
+                                "montant_centimes": montant_op, "motif": motif_op, "par": user['nom']
+                            })
+                        st.success("✅ Mouvement de caisse enregistré avec succès !")
+                        st.rerun()
+            
+            st.divider()
+            st.subheader("📖 Livre de Caisse Détaillé (Historique des Entrées & Dépenses)")
+            if not df_caisse.empty:
+                filtre_sens = st.radio("Afficher :", ["Toutes les opérations", "🔴 Sorties & Dépenses uniquement", "🟢 Entrées uniquement"], horizontal=True)
+                df_caisse_aff = df_caisse.drop(columns=["Montant_Num"])
+                if "Sorties" in filtre_sens:
+                    df_caisse_aff = df_caisse_aff[df_caisse_aff["Sens"] == "🔴 Sortie"]
+                elif "Entrées" in filtre_sens:
+                    df_caisse_aff = df_caisse_aff[df_caisse_aff["Sens"] == "🟢 Entrée"]
+                st.dataframe(df_caisse_aff, use_container_width=True, hide_index=True)
+            else:
+                st.info("Aucune dépense ou opération manuelle enregistrée dans la caisse pour le moment.")
+        except Exception as e:
+            st.error(f"Erreur dans le module Caisse : {e}")
 
     # --- PERSONNEL ---
     elif choice == "👥 Gestion Personnel":
